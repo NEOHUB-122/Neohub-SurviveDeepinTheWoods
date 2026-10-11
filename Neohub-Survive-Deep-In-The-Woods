@@ -1,0 +1,1400 @@
+
+--=========================================
+-- NEOHUB V1.1 | BUG FIX EDITION
+-- For your own Roblox Studio game
+-- LocalScript: StarterPlayer > StarterPlayerScripts
+--==================================================
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local BLUE = Color3.fromRGB(40, 135, 255)
+local DARK = Color3.fromRGB(12, 15, 24)
+local PANEL = Color3.fromRGB(20, 25, 38)
+local WHITE = Color3.fromRGB(245, 248, 255)
+local GREEN = Color3.fromRGB(50, 255, 120)
+local RED = Color3.fromRGB(255, 65, 75)
+
+local oldGui = PlayerGui:FindFirstChild("NEOHUB_V11")
+if oldGui then
+    oldGui:Destroy()
+end
+
+local running = true
+local activeTab = "BEAST"
+
+local espSurvivors = false
+local espBeast = false
+local hitboxEnabled = false
+local showHitbox = false
+local autoSafe = false
+local showDetector = false
+local fullbright = false
+local speedEnabled = false
+local infiniteJump = false
+local noclipEnabled = false
+local antiVoid = false
+
+local hitboxSize = 10
+local detectorRadius = 10
+local walkSpeedValue = 24
+
+local espObjects = {}
+local hitboxObjects = {}
+local noclipOriginal = {}
+local originalLighting = {}
+local originalWalkSpeed = 16
+local safeCFrame
+local lastSafeTP = 0
+local detectorPart
+local detectorBorder
+
+--==================================================
+-- GUI HELPERS
+--==================================================
+
+local function create(className, props, parent)
+    local obj = Instance.new(className)
+    for k, v in pairs(props or {}) do
+        obj[k] = v
+    end
+    obj.Parent = parent
+    return obj
+end
+
+local function corner(parent, radius)
+    return create("UICorner", {
+        CornerRadius = UDim.new(0, radius or 8)
+    }, parent)
+end
+
+local function stroke(parent, color, thickness)
+    return create("UIStroke", {
+        Color = color or BLUE,
+        Thickness = thickness or 1,
+        Transparency = 0.15
+    }, parent)
+end
+
+local function makeLabel(parent, text, size, position, fontSize)
+    return create("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = size,
+        Position = position,
+        Text = text,
+        TextColor3 = WHITE,
+        TextSize = fontSize or 13,
+        Font = Enum.Font.GothamMedium,
+        TextWrapped = true,
+        TextXAlignment = Enum.TextXAlignment.Left
+    }, parent)
+end
+
+local function makeButton(parent, text, callback, color)
+    local button = create("TextButton", {
+        Size = UDim2.new(1, 0, 0, 34),
+        BackgroundColor3 = color or PANEL,
+        Text = text,
+        TextColor3 = WHITE,
+        TextSize = 12,
+        Font = Enum.Font.GothamBold,
+        AutoButtonColor = true
+    }, parent)
+
+    corner(button, 7)
+    stroke(button, color or BLUE, 1)
+
+    button.Activated:Connect(function()
+        if callback then
+            callback()
+        end
+    end)
+
+    return button
+end
+
+local function makeInput(parent, placeholder, defaultText)
+    local box = create("TextBox", {
+        Size = UDim2.new(1, 0, 0, 34),
+        BackgroundColor3 = DARK,
+        Text = defaultText or "",
+        PlaceholderText = placeholder,
+        TextColor3 = WHITE,
+        PlaceholderColor3 = Color3.fromRGB(140, 150, 170),
+        TextSize = 12,
+        Font = Enum.Font.Gotham,
+        ClearTextOnFocus = false
+    }, parent)
+
+    corner(box, 7)
+    stroke(box, BLUE, 1)
+
+    return box
+end
+
+local function makeToggle(parent, title, initial, callback)
+    local state = initial or false
+
+    local button = makeButton(
+        parent,
+        title .. " : " .. (state and "ON" or "OFF"),
+        nil,
+        PANEL
+    )
+
+    local function refresh()
+        button.Text = title .. " : " .. (state and "ON" or "OFF")
+        button.BackgroundColor3 = state
+            and Color3.fromRGB(18, 65, 100)
+            or PANEL
+    end
+
+    button.Activated:Connect(function()
+        state = not state
+        refresh()
+        callback(state)
+    end)
+
+    refresh()
+    return button
+end
+
+--==================================================
+-- LOADING SCREEN
+--==================================================
+
+local loadingGui = create("ScreenGui", {
+    Name = "NEOHUB_Loading",
+    ResetOnSpawn = false,
+    IgnoreGuiInset = true,
+    DisplayOrder = 100
+}, PlayerGui)
+
+local loadingFrame = create("Frame", {
+    Size = UDim2.fromScale(1, 1),
+    BackgroundColor3 = DARK
+}, loadingGui)
+
+local loadingLogo = create("ImageLabel", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.38, 0),
+    Size = UDim2.fromOffset(76, 76),
+    BackgroundTransparency = 1,
+    Image = "rbxassetid://80870779095600"
+}, loadingFrame)
+
+local loadingTitle = create("TextLabel", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.51, 0),
+    Size = UDim2.fromOffset(260, 35),
+    BackgroundTransparency = 1,
+    Text = "NEOHUB",
+    TextColor3 = WHITE,
+    TextSize = 27,
+    Font = Enum.Font.GothamBlack
+}, loadingFrame)
+
+local loadingSubtitle = create("TextLabel", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.57, 0),
+    Size = UDim2.fromOffset(260, 22),
+    BackgroundTransparency = 1,
+    Text = "V1.1 | BUG FIX EDITION",
+    TextColor3 = BLUE,
+    TextSize = 11,
+    Font = Enum.Font.GothamBold
+}, loadingFrame)
+
+local progressBack = create("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.66, 0),
+    Size = UDim2.fromOffset(230, 6),
+    BackgroundColor3 = PANEL
+}, loadingFrame)
+corner(progressBack, 5)
+
+local progressBar = create("Frame", {
+    Size = UDim2.new(0, 0, 1, 0),
+    BackgroundColor3 = BLUE
+}, progressBack)
+corner(progressBar, 5)
+
+for i = 1, 100 do
+    if not running then break end
+    progressBar.Size = UDim2.new(i / 100, 0, 1, 0)
+    task.wait(0.012)
+end
+
+if loadingGui.Parent then
+    loadingGui:Destroy()
+end
+
+--==================================================
+-- MAIN GUI
+--==================================================
+
+local gui = create("ScreenGui", {
+    Name = "NEOHUB-Survive Deep in The Woods",
+    ResetOnSpawn = false,
+    IgnoreGuiInset = true,
+    DisplayOrder = 90
+}, PlayerGui)
+
+local main = create("Frame", {
+    Name = "Main",
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.fromOffset(500, 390),
+    BackgroundColor3 = DARK,
+    BorderSizePixel = 0,
+    Active = true
+}, gui)
+
+corner(main, 12)
+stroke(main, BLUE, 1.5)
+
+-- Keep the menu usable on smaller screens.
+local sizeConstraint = create("UISizeConstraint", {
+    MinSize = Vector2.new(290, 300),
+    MaxSize = Vector2.new(500, 390)
+}, main)
+
+local scale = create("UIScale", {
+    Scale = 1
+}, main)
+
+local function updateScale()
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+
+    local viewport = camera.ViewportSize
+    scale.Scale = math.min(
+        1,
+        viewport.X / 530,
+        viewport.Y / 420
+    )
+end
+
+updateScale()
+
+if workspace.CurrentCamera then
+    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize")
+        :Connect(updateScale)
+end
+
+-- Header
+local header = create("Frame", {
+    Size = UDim2.new(1, 0, 0, 64),
+    BackgroundColor3 = PANEL,
+    BorderSizePixel = 0
+}, main)
+corner(header, 12)
+
+local headerCover = create("Frame", {
+    Position = UDim2.new(0, 0, 1, -12),
+    Size = UDim2.new(1, 0, 0, 12),
+    BackgroundColor3 = PANEL,
+    BorderSizePixel = 0
+}, header)
+
+create("ImageLabel", {
+    Position = UDim2.new(0, 12, 0, 10),
+    Size = UDim2.fromOffset(42, 42),
+    BackgroundTransparency = 1,
+    Image = "rbxassetid://80870779095600"
+}, header)
+
+makeLabel(
+    header,
+    "NEOHUB",
+    UDim2.new(0, 180, 0, 27),
+    UDim2.new(0, 62, 0, 10),
+    20
+)
+
+local versionLabel = makeLabel(
+    header,
+    "V1.1 | BUG FIX EDITION",
+    UDim2.new(0, 180, 0, 17),
+    UDim2.new(0, 63, 0, 34),
+    9
+)
+versionLabel.TextColor3 = BLUE
+
+local minimizeButton = create("TextButton", {
+    Position = UDim2.new(1, -70, 0, 13),
+    Size = UDim2.fromOffset(25, 25),
+    BackgroundColor3 = BLUE,
+    Text = "-",
+    TextColor3 = WHITE,
+    TextSize = 20,
+    Font = Enum.Font.GothamBold
+}, header)
+corner(minimizeButton, 6)
+
+local closeButton = create("TextButton", {
+    Position = UDim2.new(1, -37, 0, 13),
+    Size = UDim2.fromOffset(25, 25),
+    BackgroundColor3 = Color3.fromRGB(170, 45, 55),
+    Text = "X",
+    TextColor3 = WHITE,
+    TextSize = 12,
+    Font = Enum.Font.GothamBold
+}, header)
+corner(closeButton, 6)
+
+--==================================================
+-- DRAGGING
+--==================================================
+
+local dragging = false
+local dragInput
+local dragStart
+local startPosition
+
+header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+        dragging = true
+        dragStart = input.Position
+        startPosition = main.Position
+        dragInput = input
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if dragging and (
+        input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch
+    ) then
+        local delta = input.Position - dragStart
+
+        main.Position = UDim2.new(
+            startPosition.X.Scale,
+            startPosition.X.Offset + delta.X,
+            startPosition.Y.Scale,
+            startPosition.Y.Offset + delta.Y
+        )
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input == dragInput
+        or input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+        dragInput = nil
+    end
+end)
+
+--==================================================
+-- MINI LOGO
+--==================================================
+
+local mini = create("ImageButton", {
+    Name = "MiniNEOHUB",
+    Size = UDim2.fromOffset(48, 48),
+    Position = UDim2.new(0, 20, 0.5, -24),
+    BackgroundColor3 = PANEL,
+    Image = "rbxassetid://80870779095600",
+    Visible = false,
+    Active = true
+}, gui)
+corner(mini, 10)
+stroke(mini, BLUE, 1.5)
+
+local miniDragging = false
+local miniDragStart
+local miniStartPosition
+local miniDragInput
+
+mini.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+        miniDragging = true
+        miniDragStart = input.Position
+        miniStartPosition = mini.Position
+        miniDragInput = input
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if miniDragging and (
+        input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch
+    ) then
+        local delta = input.Position - miniDragStart
+
+        mini.Position = UDim2.new(
+            miniStartPosition.X.Scale,
+            miniStartPosition.X.Offset + delta.X,
+            miniStartPosition.Y.Scale,
+            miniStartPosition.Y.Offset + delta.Y
+        )
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input == miniDragInput then
+        miniDragging = false
+        miniDragInput = nil
+    end
+end)
+
+minimizeButton.Activated:Connect(function()
+    main.Visible = false
+    mini.Visible = true
+end)
+
+mini.Activated:Connect(function()
+    main.Visible = true
+    mini.Visible = false
+end)
+
+--==================================================
+-- CLOSE CONFIRMATION
+--==================================================
+
+local confirm = create("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.fromOffset(260, 125),
+    BackgroundColor3 = PANEL,
+    Visible = false,
+    ZIndex = 20
+}, main)
+corner(confirm, 10)
+stroke(confirm, BLUE, 1.5)
+
+local confirmText = create("TextLabel", {
+    Position = UDim2.new(0, 10, 0, 10),
+    Size = UDim2.new(1, -20, 0, 48),
+    BackgroundTransparency = 1,
+    Text = "Close NEOHUB?",
+    TextColor3 = WHITE,
+    TextSize = 15,
+    Font = Enum.Font.GothamBold,
+    ZIndex = 21
+}, confirm)
+
+local noButton = create("TextButton", {
+    Position = UDim2.new(0, 14, 1, -47),
+    Size = UDim2.new(0.5, -20, 0, 32),
+    BackgroundColor3 = PANEL,
+    Text = "NO",
+    TextColor3 = WHITE,
+    TextSize = 12,
+    Font = Enum.Font.GothamBold,
+    ZIndex = 21
+}, confirm)
+corner(noButton, 7)
+
+local yesButton = create("TextButton", {
+    Position = UDim2.new(0.5, 6, 1, -47),
+    Size = UDim2.new(0.5, -20, 0, 32),
+    BackgroundColor3 = Color3.fromRGB(170, 45, 55),
+    Text = "YES",
+    TextColor3 = WHITE,
+    TextSize = 12,
+    Font = Enum.Font.GothamBold,
+    ZIndex = 21
+}, confirm)
+corner(yesButton, 7)
+
+closeButton.Activated:Connect(function()
+    confirm.Visible = true
+end)
+
+noButton.Activated:Connect(function()
+    confirm.Visible = false
+end)
+
+yesButton.Activated:Connect(function()
+    running = false
+    gui:Destroy()
+end)
+
+--==================================================
+-- TABS
+--==================================================
+
+local tabBar = create("Frame", {
+    Position = UDim2.new(0, 10, 0, 72),
+    Size = UDim2.new(1, -20, 0, 36),
+    BackgroundTransparency = 1
+}, main)
+
+local tabLayout = create("UIListLayout", {
+    FillDirection = Enum.FillDirection.Horizontal,
+    HorizontalAlignment = Enum.HorizontalAlignment.Left,
+    VerticalAlignment = Enum.VerticalAlignment.Center,
+    Padding = UDim.new(0, 5),
+    SortOrder = Enum.SortOrder.LayoutOrder
+}, tabBar)
+
+local contentHolder = create("Frame", {
+    Position = UDim2.new(0, 10, 0, 116),
+    Size = UDim2.new(1, -20, 1, -126),
+    BackgroundColor3 = PANEL,
+    BorderSizePixel = 0
+}, main)
+corner(contentHolder, 9)
+
+local pages = {}
+local tabButtons = {}
+
+local function createPage(name)
+    local page = create("ScrollingFrame", {
+        Name = name .. "Page",
+        Position = UDim2.new(0, 7, 0, 7),
+        Size = UDim2.new(1, -14, 1, -14),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 4,
+        ScrollBarImageColor3 = BLUE,
+        ScrollingEnabled = true,
+        ScrollingDirection = Enum.ScrollingDirection.Y,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Visible = false
+    }, contentHolder)
+
+    create("UIPadding", {
+        PaddingTop = UDim.new(0, 3),
+        PaddingBottom = UDim.new(0, 8),
+        PaddingLeft = UDim.new(0, 3),
+        PaddingRight = UDim.new(0, 5)
+    }, page)
+
+    create("UIListLayout", {
+        Padding = UDim.new(0, 7),
+        SortOrder = Enum.SortOrder.LayoutOrder
+    }, page)
+
+    pages[name] = page
+    return page
+end
+
+local function switchTab(name)
+    activeTab = name
+
+    for pageName, page in pairs(pages) do
+        page.Visible = pageName == name
+    end
+
+    for tabName, button in pairs(tabButtons) do
+        button.BackgroundColor3 = tabName == name
+            and BLUE or PANEL
+    end
+end
+
+local tabNames = {"BEAST", "SURVIVOR", "PLAYER", "CREDITS"}
+
+for index, name in ipairs(tabNames) do
+    local button = create("TextButton", {
+        Name = name .. "Tab",
+        Size = UDim2.new(0.25, -4, 1, 0),
+        BackgroundColor3 = PANEL,
+        Text = name,
+        TextColor3 = WHITE,
+        TextSize = 10,
+        Font = Enum.Font.GothamBold,
+        LayoutOrder = index
+    }, tabBar)
+
+    corner(button, 7)
+    tabButtons[name] = button
+    createPage(name)
+
+    button.Activated:Connect(function()
+        switchTab(name)
+    end)
+end
+
+switchTab("BEAST")
+
+--==================================================
+-- CHARACTER HELPERS
+--==================================================
+
+local function getCharacter(player)
+    return player and player.Character
+end
+
+local function getRoot(player)
+    local character = getCharacter(player)
+    return character and character:FindFirstChild("HumanoidRootPart")
+end
+
+local function getHumanoid(player)
+    local character = getCharacter(player)
+    return character and character:FindFirstChildOfClass("Humanoid")
+end
+
+--==================================================
+-- PLAYER ESP
+--==================================================
+
+local function clearESP(key)
+    local data = espObjects[key]
+    if not data then return end
+
+    for _, object in ipairs(data) do
+        if object and object.Parent then
+            object:Destroy()
+        end
+    end
+
+    espObjects[key] = nil
+end
+
+local function addPlayerESP(player, color, key)
+    clearESP(key)
+
+    local character = getCharacter(player)
+    local root = getRoot(player)
+    if not character or not root then return end
+
+    local highlight = create("Highlight", {
+        Name = "NEOHUB_ESP",
+        Adornee = character,
+        FillColor = color,
+        OutlineColor = color,
+        FillTransparency = 0.85,
+        OutlineTransparency = 0
+    }, gui)
+
+    local billboard = create("BillboardGui", {
+        Name = "NEOHUB_ESP_Label",
+        Adornee = root,
+        Size = UDim2.fromOffset(170, 38),
+        StudsOffset = Vector3.new(0, 3, 0),
+        AlwaysOnTop = true
+    }, gui)
+
+    local label = create("TextLabel", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        TextColor3 = color,
+        TextStrokeTransparency = 0.3,
+        TextSize = 12,
+        Font = Enum.Font.GothamBold,
+        Text = player.DisplayName
+    }, billboard)
+
+    espObjects[key] = {highlight, billboard, label}
+end
+
+local function refreshSurvivorESP()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local key = "survivor_" .. player.UserId
+
+            if espSurvivors then
+                addPlayerESP(player, GREEN, key)
+            else
+                clearESP(key)
+            end
+        end
+    end
+end
+
+--==================================================
+-- BEAST ESP
+-- Finds a Workspace model named "Beast"
+--==================================================
+
+local beastHighlight
+local beastBillboard
+
+local function clearBeastESP()
+    if beastHighlight then beastHighlight:Destroy() end
+    if beastBillboard then beastBillboard:Destroy() end
+    beastHighlight = nil
+    beastBillboard = nil
+end
+
+local function refreshBeastESP()
+    clearBeastESP()
+    if not espBeast then return end
+
+    local beastModel = workspace:FindFirstChild("Beast", true)
+    if not beastModel or not beastModel:IsA("Model") then return end
+
+    local root = beastModel:FindFirstChild("HumanoidRootPart")
+        or beastModel.PrimaryPart
+
+    if not root then return end
+
+    beastHighlight = create("Highlight", {
+        Name = "NEOHUB_BeastESP",
+        Adornee = beastModel,
+        FillColor = RED,
+        OutlineColor = RED,
+        FillTransparency = 0.85,
+        OutlineTransparency = 0
+    }, gui)
+
+    beastBillboard = create("BillboardGui", {
+        Name = "NEOHUB_BeastLabel",
+        Adornee = root,
+        Size = UDim2.fromOffset(160, 32),
+        StudsOffset = Vector3.new(0, 3, 0),
+        AlwaysOnTop = true
+    }, gui)
+
+    create("TextLabel", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        Text = "BEAST",
+        TextColor3 = RED,
+        TextStrokeTransparency = 0.25,
+        TextSize = 13,
+        Font = Enum.Font.GothamBold
+    }, beastBillboard)
+end
+
+--==================================================
+-- HITBOX
+-- No separate collision toggle.
+-- Client-side changes may not replicate to server.
+--==================================================
+
+local function clearHitboxes()
+    for _, data in pairs(hitboxObjects) do
+        if data.box and data.box.Parent then
+            data.box:Destroy()
+        end
+        if data.selection and data.selection.Parent then
+            data.selection:Destroy()
+        end
+    end
+    hitboxObjects = {}
+end
+
+local function refreshHitboxes()
+    clearHitboxes()
+    if not hitboxEnabled then return end
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local root = getRoot(player)
+            if root then
+                local originalSize = root.Size
+
+                root.Size = Vector3.new(
+                    hitboxSize,
+                    hitboxSize,
+                    hitboxSize
+                )
+
+                local box
+                if showHitbox then
+                    box = create("BoxHandleAdornment", {
+                        Name = "NEOHUB_HitboxVisual",
+                        Adornee = root,
+                        Size = root.Size,
+                        Color3 = BLUE,
+                        Transparency = 0.65,
+                        AlwaysOnTop = true,
+                        ZIndex = 5
+                    }, gui)
+                end
+
+                hitboxObjects[player.UserId] = {
+                    root = root,
+                    originalSize = originalSize,
+                    box = box
+                }
+            end
+        end
+    end
+end
+
+local function restoreHitboxes()
+    for _, data in pairs(hitboxObjects) do
+        if data.root and data.root.Parent then
+            data.root.Size = data.originalSize
+        end
+        if data.box and data.box.Parent then
+            data.box:Destroy()
+        end
+    end
+    hitboxObjects = {}
+end
+
+--==================================================
+-- DETECTOR
+-- Transparency 0.2 + thin white border
+--==================================================
+
+detectorPart = create("Part", {
+    Name = "NEOHUB_Detector",
+    Shape = Enum.PartType.Cylinder,
+    Size = Vector3.new(0.12, detectorRadius * 2, detectorRadius * 2),
+    Material = Enum.Material.Plastic,
+    Color = Color3.fromRGB(70, 150, 255),
+    Transparency = 1,
+    Anchored = true,
+    CanCollide = false,
+    CanTouch = false,
+    CanQuery = false,
+    CastShadow = false
+}, workspace)
+
+detectorBorder = create("SelectionBox", {
+    Name = "NEOHUB_DetectorBorder",
+    Adornee = detectorPart,
+    Color3 = Color3.fromRGB(255, 255, 255),
+    SurfaceTransparency = 1,
+    LineThickness = 0.015,
+    Visible = false
+}, detectorPart)
+
+local function refreshDetector()
+    detectorPart.Size = Vector3.new(
+        0.12,
+        detectorRadius * 2,
+        detectorRadius * 2
+    )
+
+    detectorPart.Transparency = showDetector and 0.2 or 1
+    detectorBorder.Visible = showDetector
+end
+
+local function updateDetectorPosition()
+    local root = getRoot(LocalPlayer)
+    if not root then return end
+
+    detectorPart.CFrame =
+        CFrame.new(root.Position - Vector3.new(0, 2.8, 0))
+        * CFrame.Angles(0, 0, math.rad(90))
+end
+
+--==================================================
+-- SAFEZONE TELEPORT
+-- Uses BaseParts named SafeZone, SafeZoneSpawn,
+-- or SpawnLocation as destinations.
+--==================================================
+
+local function findSafeParts()
+    local results = {}
+
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("BasePart") then
+            local name = string.lower(object.Name)
+
+            if name == "safezone"
+                or name == "safezone_spawn"
+                or name == "safezonespawn"
+                or object:IsA("SpawnLocation") then
+
+                table.insert(results, object)
+            end
+        end
+    end
+
+    return results
+end
+
+local function teleportToSafezone()
+    local character = getCharacter(LocalPlayer)
+    local root = getRoot(LocalPlayer)
+    if not character or not root then return end
+
+    local safeParts = findSafeParts()
+    if #safeParts == 0 then
+        warn("NEOHUB: Add a BasePart named SafeZone or SafeZoneSpawn.")
+        return
+    end
+
+    local destination = safeParts[math.random(1, #safeParts)]
+
+    character:PivotTo(
+        destination.CFrame + Vector3.new(0, 4, 0)
+    )
+end
+
+local function getBeastRoot()
+    local beast = workspace:FindFirstChild("Beast", true)
+    if not beast or not beast:IsA("Model") then return nil end
+
+    return beast:FindFirstChild("HumanoidRootPart")
+        or beast.PrimaryPart
+end
+
+--==================================================
+-- BEAST TAB
+--==================================================
+
+local beastPage = pages.BEAST
+
+makeLabel(
+    beastPage,
+    "SURVIVOR ESP",
+    UDim2.new(1, 0, 0, 22),
+    UDim2.new(),
+    13
+)
+
+makeToggle(beastPage, "ESP SURVIVOR", false, function(value)
+    espSurvivors = value
+    refreshSurvivorESP()
+end)
+
+makeLabel(
+    beastPage,
+    "HITBOX SIZE (MAX 20)",
+    UDim2.new(1, 0, 0, 22),
+    UDim2.new(),
+    12
+)
+
+local hitboxInput = makeInput(
+    beastPage,
+    "Enter size 1-20",
+    "10"
+)
+
+hitboxInput.FocusLost:Connect(function()
+    local number = tonumber(hitboxInput.Text)
+
+    if number then
+        hitboxSize = math.clamp(number, 1, 20)
+        hitboxInput.Text = tostring(hitboxSize)
+
+        if hitboxEnabled then
+            refreshHitboxes()
+        end
+    else
+        hitboxInput.Text = tostring(hitboxSize)
+    end
+end)
+
+makeToggle(beastPage, "HITBOX", false, function(value)
+    hitboxEnabled = value
+
+    if value then
+        refreshHitboxes()
+    else
+        restoreHitboxes()
+    end
+end)
+
+makeToggle(beastPage, "SHOW HITBOX", false, function(value)
+    showHitbox = value
+
+    if hitboxEnabled then
+        refreshHitboxes()
+    end
+end)
+
+local randomTP = makeButton(
+    beastPage,
+    "TP TO RANDOM PLAYER",
+    function()
+        local candidates = {}
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and getRoot(player) then
+                table.insert(candidates, player)
+            end
+        end
+
+        if #candidates == 0 then
+            warn("NEOHUB: No other players available.")
+            return
+        end
+
+        local target = candidates[math.random(1, #candidates)]
+        local myCharacter = getCharacter(LocalPlayer)
+        local targetRoot = getRoot(target)
+
+        if myCharacter and targetRoot then
+            myCharacter:PivotTo(
+                targetRoot.CFrame * CFrame.new(3, 0, 3)
+            )
+        end
+    end,
+    BLUE
+)
+
+randomTP.Size = UDim2.new(0.72, 0, 0, 30)
+randomTP.AnchorPoint = Vector2.new(0.5, 0)
+randomTP.Position = UDim2.new(0.5, 0, 0, 0)
+
+--==================================================
+-- SURVIVOR TAB
+--==================================================
+
+local survivorPage = pages.SURVIVOR
+
+makeLabel(
+    survivorPage,
+    "BEAST DETECTION",
+    UDim2.new(1, 0, 0, 22),
+    UDim2.new(),
+    13
+)
+
+makeToggle(survivorPage, "ESP BEAST", false, function(value)
+    espBeast = value
+    refreshBeastESP()
+end)
+
+makeLabel(
+    survivorPage,
+    "DETECTOR RADIUS (MAX 20)",
+    UDim2.new(1, 0, 0, 22),
+    UDim2.new(),
+    12
+)
+
+local radiusInput = makeInput(
+    survivorPage,
+    "Enter radius 1-20",
+    "10"
+)
+
+radiusInput.FocusLost:Connect(function()
+    local number = tonumber(radiusInput.Text)
+
+    if number then
+        detectorRadius = math.clamp(number, 1, 20)
+        radiusInput.Text = tostring(detectorRadius)
+        refreshDetector()
+    else
+        radiusInput.Text = tostring(detectorRadius)
+    end
+end)
+
+makeToggle(survivorPage, "SHOW DETECTOR", false, function(value)
+    showDetector = value
+    refreshDetector()
+end)
+
+makeToggle(survivorPage, "AUTO TP TO SAFEZONE", false, function(value)
+    autoSafe = value
+end)
+
+--==================================================
+-- PLAYER TAB
+--==================================================
+
+local playerPage = pages.PLAYER
+
+makeLabel(
+    playerPage,
+    "PLAYER SETTINGS",
+    UDim2.new(1, 0, 0, 22),
+    UDim2.new(),
+    13
+)
+
+makeToggle(playerPage, "FULLBRIGHT", false, function(value)
+    fullbright = value
+
+    if value then
+        originalLighting = {
+            Brightness = Lighting.Brightness,
+            ClockTime = Lighting.ClockTime,
+            GlobalShadows = Lighting.GlobalShadows,
+            Ambient = Lighting.Ambient,
+            OutdoorAmbient = Lighting.OutdoorAmbient
+        }
+
+        Lighting.Brightness = 3
+        Lighting.ClockTime = 14
+        Lighting.GlobalShadows = false
+        Lighting.Ambient = Color3.fromRGB(180, 180, 180)
+        Lighting.OutdoorAmbient = Color3.fromRGB(180, 180, 180)
+    else
+        for property, originalValue in pairs(originalLighting) do
+            Lighting[property] = originalValue
+        end
+    end
+end)
+
+makeLabel(
+    playerPage,
+    "WALKSPEED (MAX 30)",
+    UDim2.new(1, 0, 0, 22),
+    UDim2.new(),
+    12
+)
+
+local speedInput = makeInput(
+    playerPage,
+    "Enter speed 1-30",
+    "24"
+)
+
+speedInput.FocusLost:Connect(function()
+    local number = tonumber(speedInput.Text)
+
+    if number then
+        walkSpeedValue = math.clamp(number, 1, 30)
+        speedInput.Text = tostring(walkSpeedValue)
+
+        if speedEnabled then
+            local humanoid = getHumanoid(LocalPlayer)
+            if humanoid then
+                humanoid.WalkSpeed = walkSpeedValue
+            end
+        end
+    else
+        speedInput.Text = tostring(walkSpeedValue)
+    end
+end)
+
+makeToggle(playerPage, "WALKSPEED", false, function(value)
+    speedEnabled = value
+
+    local humanoid = getHumanoid(LocalPlayer)
+    if humanoid then
+        if value then
+            originalWalkSpeed = humanoid.WalkSpeed
+            humanoid.WalkSpeed = walkSpeedValue
+        else
+            humanoid.WalkSpeed = originalWalkSpeed
+        end
+    end
+end)
+
+makeToggle(playerPage, "INFINITE JUMP", false, function(value)
+    infiniteJump = value
+end)
+
+makeToggle(playerPage, "NOCLIP", false, function(value)
+    noclipEnabled = value
+
+    if not value then
+        for part, originalValue in pairs(noclipOriginal) do
+            if part and part.Parent then
+                part.CanCollide = originalValue
+            end
+        end
+        noclipOriginal = {}
+    end
+end)
+
+makeToggle(playerPage, "ANTI-VOID", false, function(value)
+    antiVoid = value
+end)
+
+--==================================================
+-- CREDITS TAB
+--==================================================
+
+local creditsPage = pages.CREDITS
+
+makeLabel(
+    creditsPage,
+    "NEOHUB V1.1",
+    UDim2.new(1, 0, 0, 30),
+    UDim2.new(),
+    20
+)
+
+makeLabel(
+    creditsPage,
+    "BUG FIX EDITION",
+    UDim2.new(1, 0, 0, 22),
+    UDim2.new(),
+    12
+).TextColor3 = BLUE
+
+makeLabel(
+    creditsPage,
+    "YouTube Channel",
+    UDim2.new(1, 0, 0, 22),
+    UDim2.new(),
+    12
+)
+
+local channelInput = makeInput(
+    creditsPage,
+    "YouTube URL",
+    "https://www.youtube.com/@NEOHUB-788"
+)
+
+makeButton(creditsPage, "OPEN YOUTUBE CHANNEL", function()
+    local url = channelInput.Text
+
+    if url:match("^https://www%.youtube%.com/") then
+        local success = pcall(function()
+            game:GetService("GuiService"):OpenBrowserWindow(url)
+        end)
+
+        if not success then
+            warn("NEOHUB: Open this URL manually: " .. url)
+        end
+    else
+        warn("NEOHUB: Enter a valid YouTube URL.")
+    end
+end, BLUE)
+
+makeLabel(
+    creditsPage,
+    "UI design and script: NEOHUB",
+    UDim2.new(1, 0, 0, 24),
+    UDim2.new(),
+    11
+)
+
+--==================================================
+-- PLAYER FEATURE LOOPS
+--==================================================
+
+UIS.JumpRequest:Connect(function()
+    if not running or not infiniteJump then return end
+
+    local humanoid = getHumanoid(LocalPlayer)
+    if humanoid then
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+
+local function refreshNoclip()
+    local character = getCharacter(LocalPlayer)
+    if not character then return end
+
+    for _, object in ipairs(character:GetDescendants()) do
+        if object:IsA("BasePart") then
+            if noclipEnabled then
+                if noclipOriginal[object] == nil then
+                    noclipOriginal[object] = object.CanCollide
+                end
+                object.CanCollide = false
+            elseif noclipOriginal[object] ~= nil then
+                object.CanCollide = noclipOriginal[object]
+                noclipOriginal[object] = nil
+            end
+        end
+    end
+end
+
+local elapsed = 0
+
+RunService.Heartbeat:Connect(function(deltaTime)
+    if not running then return end
+
+    elapsed += deltaTime
+
+    refreshNoclip()
+    updateDetectorPosition()
+
+    local root = getRoot(LocalPlayer)
+    local humanoid = getHumanoid(LocalPlayer)
+
+    if root and humanoid then
+        -- Save only grounded positions above the void.
+        if humanoid.FloorMaterial ~= Enum.Material.Air
+            and root.Position.Y > -30 then
+            safeCFrame = root.CFrame
+        end
+
+        if antiVoid and root.Position.Y < -40 and safeCFrame then
+            root.CFrame = safeCFrame
+        end
+    end
+
+    if elapsed >= 0.25 then
+        elapsed = 0
+
+        -- Update distance labels.
+        if espSurvivors then
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    local key = "survivor_" .. player.UserId
+                    local data = espObjects[key]
+                    local myRoot = getRoot(LocalPlayer)
+                    local targetRoot = getRoot(player)
+
+                    if data and data[3] and myRoot and targetRoot then
+                        local distance = math.floor(
+                            (myRoot.Position - targetRoot.Position).Magnitude
+                        )
+
+                        data[3].Text = player.DisplayName
+                            .. " [" .. distance .. " studs]"
+                    end
+                end
+            end
+        end
+
+        -- Auto TP when the Beast is nearby.
+        if autoSafe and root then
+            local beastRoot = getBeastRoot()
+
+            if beastRoot then
+                local distance =
+                    (root.Position - beastRoot.Position).Magnitude
+
+                if distance <= detectorRadius
+                    and os.clock() - lastSafeTP >= 2 then
+
+                    lastSafeTP = os.clock()
+                    teleportToSafezone()
+                end
+            end
+        end
+
+        -- Recreate ESP if the Beast model changes.
+        if espBeast then
+            local beast = workspace:FindFirstChild("Beast", true)
+            if beast and beast:IsA("Model") then
+                if not beastHighlight
+                    or beastHighlight.Adornee ~= beast then
+                    refreshBeastESP()
+                end
+            end
+        end
+    end
+end)
+
+--==================================================
+-- RESPAWN HANDLING
+--==================================================
+
+LocalPlayer.CharacterAdded:Connect(function(character)
+    task.wait(0.5)
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if humanoid and speedEnabled then
+        originalWalkSpeed = humanoid.WalkSpeed
+        humanoid.WalkSpeed = walkSpeedValue
+    end
+
+    if hitboxEnabled then
+        task.wait(0.5)
+        refreshHitboxes()
+    end
+end)
+
+Players.PlayerAdded:Connect(function()
+    task.wait(0.5)
+    if espSurvivors then
+        refreshSurvivorESP()
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    clearESP("survivor_" .. player.UserId)
+end)
+
+--==================================================
+-- INITIALIZE
+--==================================================
+
+refreshDetector()
+
+print("NEOHUB V1.1 loaded successfully.")
